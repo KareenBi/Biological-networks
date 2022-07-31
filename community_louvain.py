@@ -1,116 +1,17 @@
-from __future__ import print_function
-import networkx as nx
-# from community import community_louvain
-import matplotlib.cm as cm
-import matplotlib.pyplot as plt
-import array
-import numbers
-import warnings
-import networkx as nx
-import numpy as np
-# G = nx.read_edgelist(r"C:\Users\feras\Downloads\Benchmarks\Benchmarks\Arabidopsis\edges.txt",delimiter = "\t")
-# partition = best_partition(G)
-# pos = nx.spring_layout(G)
-# # color the nodes according to their partition
-# cmap = cm.get_cmap('viridis', max(partition.values()) + 1)
-# nx.draw_networkx_nodes(G, pos, partition.keys(), node_size=40,
-#                        cmap=cmap, node_color=list(partition.values()))
-# nx.draw_networkx_edges(G, pos, alpha=0.5)
-# plt.show()
-# # nx.draw(G)
-# # plt.show()
-
-# -*- coding: utf-8 -*-
 """
 This module implements community detection.
 """
+from __future__ import print_function
 
-# from .community_status import Status
-class Status(object):
-    """
-    To handle several data in one struct.
-    Could be replaced by named tuple, but don't want to depend on python 2.6
-    """
-    node2com = {}
-    total_weight = 0
-    internals = {}
-    degrees = {}
-    gdegrees = {}
+import array
 
-    def __init__(self):
-        self.node2com = dict([])
-        # self.com2node = dict([])
-        self.total_weight = 0
-        self.degrees = dict([])
-        self.gdegrees = dict([])
-        self.internals = dict([])
-        self.loops = dict([])
+import numbers
+import warnings
 
-    def __str__(self):
-        return ("node2com : " + str(self.node2com) + " degrees : "
-                + str(self.degrees) + " internals : " + str(self.internals)
-                + " total_weight : " + str(self.total_weight))
+import networkx as nx
+import numpy as np
 
-    def copy(self):
-        """Perform a deep copy of status"""
-        new_status = Status()
-        new_status.node2com = self.node2com.copy()
-        # new_status.com2node = self.com2node.copy()
-        new_status.internals = self.internals.copy()
-        new_status.degrees = self.degrees.copy()
-        new_status.gdegrees = self.gdegrees.copy()
-        new_status.total_weight = self.total_weight
-
-    def init(self, graph, weight, part=None):
-        """Initialize the status of a graph with every node in one community"""
-        count = 0
-        self.node2com = dict([])
-        # self.com2node = dict([])
-        self.total_weight = 0
-        self.degrees = dict([])
-        self.gdegrees = dict([])
-        self.internals = dict([])
-        self.total_weight = graph.size(weight=weight)
-        if part is None:
-            for node in graph.nodes():
-                self.node2com[node] = count
-                # self.com2node[count] = [node]
-                deg = float(graph.degree(node, weight=weight))
-                if deg < 0:
-                    error = "Bad node degree ({})".format(deg)
-                    raise ValueError(error)
-                self.degrees[count] = deg
-                self.gdegrees[node] = deg
-                edge_data = graph.get_edge_data(node, node, default={weight: 0})
-                self.loops[node] = float(edge_data.get(weight, 1))
-                self.internals[count] = self.loops[node]
-                count += 1
-        else:
-            for node in graph.nodes():
-                com = part[node]
-                self.node2com[node] = com
-                deg = float(graph.degree(node, weight=weight))
-                self.degrees[com] = self.degrees.get(com, 0) + deg
-                self.gdegrees[node] = deg
-                inc = 0.
-                for neighbor, datas in graph[node].items():
-                    edge_weight = datas.get(weight, 1)
-                    if edge_weight <= 0:
-                        error = "Bad graph type ({})".format(type(graph))
-                        raise ValueError(error)
-                    if part[neighbor] == com:
-                        if neighbor == node:
-                            inc += float(edge_weight)
-                        else:
-                            inc += float(edge_weight) / 2.
-                self.internals[com] = self.internals.get(com, 0) + inc
-
-
-__author__ = """Thomas Aynaud (thomas.aynaud@lip6.fr)"""
-#    Copyright (C) 2009 by
-#    Thomas Aynaud <thomas.aynaud@lip6.fr>
-#    All rights reserved.
-#    BSD license.
+from community_status import Status
 
 __PASS_MAX = -1
 __MIN = 0.0000001
@@ -250,6 +151,7 @@ def modularity(partition, graph, weight='weight'):
         res += (inc.get(com, 0.) / links) - \
                (deg.get(com, 0.) / (2. * links)) ** 2
     return res
+
 
 def best_partition(graph,
                    partition=None,
@@ -445,8 +347,10 @@ def generate_dendrogram(graph,
     partition = __renumber(status.node2com)
     status_list.append(partition)
     mod = new_mod
-    current_graph = induced_graph(partition, current_graph, weight)
+    # current_graph = induced_graph(partition, current_graph, weight)
     status.init(current_graph, weight)
+    # our added code
+    """
     com2node = generate_com2node(partition)
     for com in com2node:
         com_nodes = com2node[com]
@@ -454,21 +358,43 @@ def generate_dendrogram(graph,
         com_status = Status()
         com_status.init(com_graph, weight)
         # com_status_list = list()
-        __one_level_refine(com_graph,com_status,weight ,resolution, random_state)
+        __one_level_refine(com_graph, com_status, weight ,resolution, random_state)
         update_status(status, com_status)
-        mod = __refined_modularity(mod, status, com_status, com, resolution)
-        refined_partition = __renumber()
+        mod = __modularity(status, resolution)
+        # mod = refined_modularity(mod, status, com_status, com, resolution)
+        refined_partition = __renumber(status.node2com)
+        current_graph = induced_graph(refined_partition, current_graph, weight)
+        status.init(current_graph, weight)
+    """
+    # end of our code
     while True:
         __one_level(current_graph, status, weight, resolution, random_state)
         new_mod = __modularity(status, resolution)
+        print(new_mod)
         if new_mod - mod < __MIN:
             print(mod)
             break
         partition = __renumber(status.node2com)
         status_list.append(partition)
         mod = new_mod
-        current_graph = induced_graph(partition, current_graph, weight)
+        # current_graph = induced_graph(partition, current_graph, weight)
         status.init(current_graph, weight)
+        # our added code
+        com2node = generate_com2node(partition)
+        for com in com2node:
+            com_nodes = com2node[com]
+            com_graph = graph.subgraph(com_nodes).copy()
+            com_status = Status()
+            com_status.init(com_graph, weight)
+            # com_status_list = list()
+            __one_level_refine(com_graph,com_status,weight ,resolution, random_state)
+            update_status(status, com_status)
+            mod = __modularity(status, resolution)
+            # mod = refined_modularity(mod, status, com_status, com, resolution)
+            refined_partition = __renumber(status.node2com)
+            current_graph = induced_graph(refined_partition, current_graph, weight)
+            status.init(current_graph, weight)
+        # end of our code
     return status_list[:]
 
 def update_status(graph_status, com_status):
@@ -480,13 +406,6 @@ def update_status(graph_status, com_status):
     # self.gdegrees = dict([])
     # self.internals = dict([])
     pass
-
-def generate_com2node(node2com):
-    n = len(set(node2com.values()))
-    com2node = {i:list() for i in range(n)}
-    for node in node2com:
-        com2node[node2com[node]].append(node)
-    return com2node
 
 
 def induced_graph(partition, graph, weight="weight"):
@@ -596,45 +515,7 @@ def __one_level(graph, status, weight_key, resolution, random_state):
         if new_mod - cur_mod < __MIN:
             break
 
-def __one_level_refine(graph, status, weight_key, resolution, random_state):
-    """Compute one level of communities
-    """
-    modified = True
-    nb_pass_done = 0
-    cur_mod = __modularity(status, resolution)
-    new_mod = cur_mod
 
-    while modified and nb_pass_done != __PASS_MAX:
-        cur_mod = new_mod
-        modified = False
-        nb_pass_done += 1
-
-        for node in __randomize(graph.nodes(), random_state):
-            com_node = status.node2com[node]
-            degc_totw = status.gdegrees.get(node, 0.) / (status.total_weight * 2.)  # NOQA
-            neigh_communities = __neighcom(node, graph, status, weight_key)
-            remove_cost = - neigh_communities.get(com_node,0) + \
-                resolution * (status.degrees.get(com_node, 0.) - status.gdegrees.get(node, 0.)) * degc_totw
-            __remove(node, com_node,
-                     neigh_communities.get(com_node, 0.), status)
-            best_com = com_node
-            best_increase = 0
-            for com, dnc in __randomize(neigh_communities.items(), random_state):
-                incr = remove_cost + dnc - \
-                       resolution * status.degrees.get(com, 0.) * degc_totw
-                if incr > best_increase:
-                    best_increase = incr
-                    best_com = com
-            __insert(node, best_com,
-                     neigh_communities.get(best_com, 0.), status)
-            if best_com != com_node:
-                modified = True
-        new_mod = __modularity(status, resolution)
-        if new_mod - cur_mod < __MIN:
-            break
-
-def connectivity_check():
-    pass
 def __neighcom(node, graph, status, weight_key):
     """
     Compute the communities in the neighborhood of node in the graph given
@@ -684,14 +565,6 @@ def __modularity(status, resolution):
             result += in_degree * resolution / links -  ((degree / (2. * links)) ** 2)
     return result
 
-def __refined_modularity(old_mod,graph_status, com_status, com, resolution):
-    new_mod = old_mod
-    links = float(graph_status.total_weight) 
-    in_degree = graph_status.internals.get(com,0.)
-    degree = graph_status.degrees.get(com,0.)
-    if links > 0:
-        new_mod = old_mod - in_degree * resolution/links + ((degree / (2. * links)) ** 2) + __modularity(com_status,resolution)
-    return new_mod
 
 def __randomize(items, random_state):
     """Returns a List containing a random permutation of items"""
@@ -699,12 +572,89 @@ def __randomize(items, random_state):
     random_state.shuffle(randomized_items)
     return randomized_items
 
+#---------------------------------------------------- ADDED FUNCTIONS ----------------------------------------------------
 
-# G = nx.read_edgelist(r"C:\Users\feras\Downloads\Benchmarks\Benchmarks\Yeast\edges.txt",delimiter = "\t")
-# partition = best_partition(G)
-# print(type([1,2,3]))
-G = nx.path_graph(4)  # or DiGraph, MultiGraph, MultiDiGraph, etc
-nx.draw(G)
-plt.show()
-H = G.subgraph([0, 1, 2])
-print(nx.is_connected(H))
+def __one_level_refine(graph, status, weight_key, resolution, random_state):
+    """Refinement step
+    (moves node only if it's old community stays a connected graph)
+    """
+    modified = True
+    nb_pass_done = 0
+    cur_mod = __modularity(status, resolution)
+    new_mod = cur_mod
+    com2node = generate_com2node(status.node2com)
+    while modified and nb_pass_done != __PASS_MAX:
+        cur_mod = new_mod
+        modified = False
+        nb_pass_done += 1
+
+        for node in __randomize(graph.nodes(), random_state):
+            com_node = status.node2com[node]
+            degc_totw = status.gdegrees.get(node, 0.) / (status.total_weight * 2.)  # NOQA
+            neigh_communities = __neighcom(node, graph, status, weight_key)
+            remove_cost = - neigh_communities.get(com_node,0) + \
+                resolution * (status.degrees.get(com_node, 0.) - status.gdegrees.get(node, 0.)) * degc_totw
+            #com2node = generate_com2node(status.node2com)
+            com_nodes = set(com2node[com_node])-{node}
+            subgraph = graph.subgraph(com_nodes).copy()
+            if(len(com_nodes) != 0 and not(nx.is_connected(subgraph))):
+                #removing node will result in an unconnected subgraph
+                #thus we keep it in the same community
+                continue
+            __remove(node, com_node,
+                     neigh_communities.get(com_node, 0.), status)
+            best_com = com_node
+            best_increase = 0
+            for com, dnc in __randomize(neigh_communities.items(), random_state):
+                incr = remove_cost + dnc - \
+                       resolution * status.degrees.get(com, 0.) * degc_totw
+                if incr > best_increase:
+                    best_increase = incr
+                    best_com = com
+            __insert(node, best_com,
+                     neigh_communities.get(best_com, 0.), status)
+            if best_com != com_node:
+                com2node = remove_com2node(com2node, node, com_node, best_com)
+                modified = True
+        new_mod = __modularity(status, resolution)
+        if new_mod - cur_mod < __MIN:
+            break
+
+
+
+def refined_modularity(old_mod,graph_status, com_status, com, resolution):
+    """Fast compute the modularity of the smaller communities in the refinement step
+    """
+    new_mod = old_mod
+    links = float(graph_status.total_weight) 
+    in_degree = graph_status.internals.get(com,0.)
+    degree = graph_status.degrees.get(com,0.)
+    if links > 0:
+        new_mod = old_mod - in_degree * resolution/links + ((degree / (2. * links)) ** 2) + __modularity(com_status,resolution)
+    #double check the calculation later!
+    return new_mod
+
+
+def generate_com2node(node2com):
+    """Generating the dictionary com2node.
+    key: community number
+    value: list of ndoes in that community
+    """
+    coms = set(node2com.values())
+    com2node = {i:list() for i in coms}
+    for node in node2com:
+        com2node[node2com[node]].append(node)
+    return com2node
+
+
+def remove_com2node(com2node, node, old_com, new_com):
+    """Updating the com2node dictionaty after replacing the node
+    """
+    com2node[old_com].remove(node)
+    com2node[new_com].append(node)
+    return com2node
+    
+
+G = nx.read_edgelist(r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Yeast/edges_small.txt",delimiter = "\t")
+partition = best_partition(G)
+
