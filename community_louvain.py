@@ -350,7 +350,6 @@ def generate_dendrogram(graph,
     # current_graph = induced_graph(partition, current_graph, weight)
     status.init(current_graph, weight)
     # our added code
-    """
     com2node = generate_com2node(partition)
     for com in com2node:
         com_nodes = com2node[com]
@@ -365,7 +364,6 @@ def generate_dendrogram(graph,
         refined_partition = __renumber(status.node2com)
         current_graph = induced_graph(refined_partition, current_graph, weight)
         status.init(current_graph, weight)
-    """
     # end of our code
     while True:
         __one_level(current_graph, status, weight, resolution, random_state)
@@ -409,6 +407,7 @@ def update_status(graph_status, com_status):
 
 
 def induced_graph(partition, graph, weight="weight"):
+    #community aggregation step
     """Produce the graph where nodes are the communities
 
     there is a link of weight w between communities if the sum of the weights
@@ -417,7 +416,7 @@ def induced_graph(partition, graph, weight="weight"):
     Parameters
     ----------
     partition : dict
-       a dictionary where keys are graph nodes and  values the part the node
+       a dictionary where keys are graph nodes and values the part the node
        belongs to
     graph : networkx.Graph
         the initial graph
@@ -657,4 +656,5 @@ def remove_com2node(com2node, node, old_com, new_com):
 
 G = nx.read_edgelist(r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Yeast/edges_small.txt",delimiter = "\t")
 partition = best_partition(G)
+#print(modularity)
 
