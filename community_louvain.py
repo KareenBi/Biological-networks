@@ -318,13 +318,11 @@ def generate_dendrogram(graph,
     status.init(current_graph, weight, part_init)
     status_list = list()
     __one_level(current_graph, status, weight, resolution, random_state)
-    new_mod = __modularity(status, resolution) #!!!might need to move it for later!!!
+    # started to change the code from here!
+    #new_mod = __modularity(status, resolution) #!!!might move it for later!!!
     partition = __renumber(status.node2com)
-    status_list.append(partition)
-    mod = new_mod #!!for later!!
-    sum = 0
-    # our added code
     com2node = generate_com2node(partition)
+    # refinment step
     for com in com2node:
         com_nodes = com2node[com]
         com_graph = graph.subgraph(com_nodes).copy()
@@ -332,34 +330,19 @@ def generate_dendrogram(graph,
         com_status.init(com_graph, weight)
         one_level_refine(com_graph, com_status, weight ,resolution, random_state)
         #update_status(status, com_status) #???
-        #mod = __modularity(status, resolution) #no gneed to update in every step
-        # unless! we cant assume that improving the modularity of a community improves
-        # the modularity of the graph
-        # mod = refined_modularity(mod, status, com_status, com, resolution)
         com_partition = __renumber(com_status.node2com)
         update_partition(partition, com_partition, com)
-        #current_graph = induced_graph(refined_partition, current_graph, weight)
-        #status.init(current_graph, weight)
-    updated_com2node = generate_com2node(partition)
-    communities = [set(updated_com2node[com]) for com in updated_com2node]
-    new_mod = nx_comm.modularity(current_graph, communities, weight) #added line!
-    print(new_mod)
+    new_mod = modularity(partition, current_graph, weight)
     mod = new_mod 
-    #status_list.append(partition) #ours
-    current_graph = induced_graph(partition, current_graph, weight)
-    a = list(set(partition.values())).sort()
-    status.init(current_graph, weight) #community aggregation step
-    # end of our code
-
-    
+    status_list.append(partition) #ours
+    current_graph = induced_graph(partition, current_graph, weight) #community aggregation step
+    status.init(current_graph, weight)     
     while True:
         __one_level(current_graph, status, weight, resolution, random_state)
         new_mod = __modularity(status, resolution)
         if new_mod - mod < __MIN:
             break
         partition = __renumber(status.node2com)
-        status_list.append(partition)
-        mod = new_mod #no need
         #our code
         com2node = generate_com2node(partition)
         for com in com2node:
@@ -374,9 +357,7 @@ def generate_dendrogram(graph,
             # the modularity of the graph
             # mod = refined_modularity(mod, status, com_status, com, resolution)
             com_partition = __renumber(com_status.node2com)
-            partition = update_partition(partition, com_partition, com)
-            #current_graph = induced_graph(refined_partition, current_graph, weight)
-            #status.init(current_graph, weight)
+            update_partition(partition, com_partition, com)
         new_mod = __modularity(status, resolution)
         mod = new_mod 
         status_list.append(partition) #ours 
@@ -600,7 +581,7 @@ def update_partition(partition, com_partition, cur_com):
         for node in com_partition:
             if com_partition[node] != (com_n - 1): #we want one community to stay with the same name
                 partition[node] = n + com_partition[node]
-    return partition
+    return 
 
         
 
@@ -655,10 +636,10 @@ def one_level_refine(graph, status, weight_key, resolution, random_state):
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-G = nx.read_edgelist(r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Yeast/edges_small.txt", delimiter = "\t")
+G = nx.read_edgelist(r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Yeast/edges.txt", delimiter = "\t")
 partition = best_partition(G)
 modularity = modularity(partition, G)
-#print(modularity)
+print(modularity)
 
 
 # --------------------------------------------  NOTES  ---------------------------------------------------
@@ -668,10 +649,22 @@ in our algo, we iterate community, community and try to improve each subgraph's 
 the question is: is it right to assume that increasing the modularity of a subgraph will result
 in increasing the modularity of the whole graph
 
-Note: the modualrity is incorrect! i tried to use networkx built in modularity computer, but
-still it's keeps descending
-the reason i used the built in function is that while splitting a community we dont update
-all the needed feelds in status, and __modularity() uses some of them
+Current problems!
+*PROBLEM 1*
+- it turns out that the refinment step is only affective in the first iteration, in every other iteration
+no change is made
+- the reason: louvain aggregates really quickly (<5 iterations), so in the first iteration, we have lots
+of nodes and from them we get approximitly 600 communities - there are enough nodes in each community to 
+perform the refinment (__one_level_refine)
+- after that we have the community aggregation step, so in the next time we do refinment, there aren't
+enough nodes in each community -> removing most nodes will result in an unconnected graph -> no change 
+is made!
+
+*PROBLEM 2*
+when i checked i noticed that the modularity only DECREASES! in every time we use __one_level_refine!
+thus the modularity after the refinment step is in total much smaller (sometimes it even leads to negative mod!)
+
+need to check if it's due to computatinal or algorithmical problem!
 
 """
 
