@@ -4,6 +4,7 @@ This module implements community detection.
 from __future__ import print_function
 
 import array
+#from imp import new_module
 
 import numbers
 import warnings
@@ -14,6 +15,7 @@ import numpy as np
 from community_status import Status
 
 import networkx.algorithms.community as nx_comm
+import sys
 
 __author__ = """Thomas Aynaud (thomas.aynaud@lip6.fr)"""
 #    Copyright (C) 2009 by
@@ -24,6 +26,8 @@ __author__ = """Thomas Aynaud (thomas.aynaud@lip6.fr)"""
 __PASS_MAX = -1
 __MIN = 0.0000001
 
+orig_stdout = sys.stdout
+f =  open('out.txt', 'w') #!
 
 def check_random_state(seed):
     """Turn seed into a np.random.RandomState instance.
@@ -322,6 +326,9 @@ def generate_dendrogram(graph,
     #new_mod = __modularity(status, resolution) #!!!might move it for later!!!
     partition = __renumber(status.node2com)
     com2node = generate_com2node(partition)
+    #new_mod = modularity(partition, current_graph, weight)
+    #print(new_mod)
+    #print("....")
     # refinment step
     for com in com2node:
         com_nodes = com2node[com]
@@ -331,8 +338,10 @@ def generate_dendrogram(graph,
         one_level_refine(com_graph, com_status, weight ,resolution, random_state)
         #update_status(status, com_status) #???
         com_partition = __renumber(com_status.node2com)
-        update_partition(partition, com_partition, com)
-    new_mod = modularity(partition, current_graph, weight)
+        update_partition(partition, com_partition, weight, status, current_graph)
+    #new_mod = modularity(partition, current_graph, weight)
+    new_mod = __modularity(status, resolution)
+    print(new_mod)
     mod = new_mod 
     status_list.append(partition) #ours
     current_graph = induced_graph(partition, current_graph, weight) #community aggregation step
@@ -340,6 +349,8 @@ def generate_dendrogram(graph,
     while True:
         __one_level(current_graph, status, weight, resolution, random_state)
         new_mod = __modularity(status, resolution)
+        print(new_mod)
+        #new_mod = modularity(partition, graph, weight)
         if new_mod - mod < __MIN:
             break
         partition = __renumber(status.node2com)
@@ -357,8 +368,10 @@ def generate_dendrogram(graph,
             # the modularity of the graph
             # mod = refined_modularity(mod, status, com_status, com, resolution)
             com_partition = __renumber(com_status.node2com)
-            update_partition(partition, com_partition, com)
-        new_mod = __modularity(status, resolution)
+            update_partition(partition, com_partition, weight, status, current_graph)
+        #new_mod = __modularity(status, resolution)
+        #new_mod = modularity(partition, current_graph, weight)
+        print(new_mod)
         mod = new_mod 
         status_list.append(partition) #ours 
         current_graph = induced_graph(partition, current_graph, weight)
@@ -406,7 +419,6 @@ def induced_graph(partition, graph, weight="weight"):
         com2 = partition[node2]
         w_prec = ret.get_edge_data(com1, com2, {weight: 0}).get(weight, 1)
         ret.add_edge(com1, com2, **{weight: w_prec + edge_weight})
-
     return ret
 
 
@@ -521,6 +533,7 @@ def __remove(node, com, weight, status):
     status.node2com[node] = -1
 
 
+
 def __insert(node, com, weight, status):
     """ Insert node into community and modify status"""
     status.node2com[node] = com
@@ -571,16 +584,22 @@ def update_com2node(com2node, node, old_com, new_com):
     return com2node
 
 
-def update_partition(partition, com_partition, cur_com):
+def update_partition(partition, com_partition, weight, status, graph):
     """ updating the partition of the nodes after the refinment step
     """
     n = len(set(partition.values())) #number of communities in the graph
+    #print("nods: ", len(com_partition), file=f) 
     com_n = len(set(com_partition.values())) #number of communities in the subgraph
     if (com_n > 1): 
         # the community was splitted
         for node in com_partition:
+            neigh_communities = __neighcom(node, graph, status, weight)
             if com_partition[node] != (com_n - 1): #we want one community to stay with the same name
-                partition[node] = n + com_partition[node]
+                old_com = partition[node]
+                new_com = n + com_partition[node]
+                __remove(node, old_com, neigh_communities.get(old_com, 0.), status)
+                __insert(node, new_com, neigh_communities.get(new_com, 0.), status)
+                partition[node] = new_com
     return 
 
         
@@ -610,9 +629,7 @@ def one_level_refine(graph, status, weight_key, resolution, random_state):
             neigh_communities = __neighcom(node, graph, status, weight_key)
             remove_cost = - neigh_communities.get(com_node,0) + \
                 resolution * (status.degrees.get(com_node, 0.) - status.gdegrees.get(node, 0.)) * degc_totw
-            com_nodes = set(com2node[com_node])-{node}
-            subgraph = graph.subgraph(com_nodes).copy()
-            if(len(subgraph.nodes())>0 and nx.is_connected(subgraph)):
+            if(len(graph.nodes())>0 and nx.is_connected(graph)):
                 #removing node will keep the community connected
                 __remove(node, com_node,
                         neigh_communities.get(com_node, 0.), status)
@@ -636,6 +653,7 @@ def one_level_refine(graph, status, weight_key, resolution, random_state):
 
 
 # ---------------------------------------------------------------------------------------------------------------------
+#G = nx.read_edgelist(r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Arabidopsis/edges.txt", delimiter = "\t")
 G = nx.read_edgelist(r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Yeast/edges.txt", delimiter = "\t")
 partition = best_partition(G)
 modularity = modularity(partition, G)
