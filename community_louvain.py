@@ -4,7 +4,6 @@ This module implements community detection.
 from __future__ import print_function
 
 import array
-#from imp import new_module
 
 import numbers
 import warnings
@@ -323,12 +322,9 @@ def generate_dendrogram(graph,
     status_list = list()
     __one_level(current_graph, status, weight, resolution, random_state)
     # started to change the code from here!
-    #new_mod = __modularity(status, resolution) #!!!might move it for later!!!
     partition = __renumber(status.node2com)
     com2node = generate_com2node(partition)
-    #new_mod = modularity(partition, current_graph, weight)
-    #print(new_mod)
-    #print("....")
+    
     # refinment step
     for com in com2node:
         com_nodes = com2node[com]
@@ -336,25 +332,22 @@ def generate_dendrogram(graph,
         com_status = Status()
         com_status.init(com_graph, weight)
         one_level_refine(com_graph, com_status, weight ,resolution, random_state)
-        #update_status(status, com_status) #???
         com_partition = __renumber(com_status.node2com)
-        update_partition(partition, com_partition, weight, status, current_graph)
-    #new_mod = modularity(partition, current_graph, weight)
+        update_status(partition, com_partition, weight, status, current_graph)
+    partition = __renumber(status.node2com) #can even be done without renumbering
+    print(len(set(status.node2com.values())))
     new_mod = __modularity(status, resolution)
-    print(new_mod)
     mod = new_mod 
-    status_list.append(partition) #ours
+    status_list.append(partition)
     current_graph = induced_graph(partition, current_graph, weight) #community aggregation step
     status.init(current_graph, weight)     
     while True:
-        __one_level(current_graph, status, weight, resolution, random_state)
+        print("!")
         new_mod = __modularity(status, resolution)
-        print(new_mod)
-        #new_mod = modularity(partition, graph, weight)
+        __one_level(current_graph, status, weight, resolution, random_state)
         if new_mod - mod < __MIN:
             break
         partition = __renumber(status.node2com)
-        #our code
         com2node = generate_com2node(partition)
         for com in com2node:
             com_nodes = com2node[com]
@@ -362,21 +355,15 @@ def generate_dendrogram(graph,
             com_status = Status()
             com_status.init(com_graph, weight)
             one_level_refine(com_graph, com_status, weight ,resolution, random_state)
-            #update_status(status, com_status) #???
-            #mod = __modularity(status, resolution) #no need to update in every step
-            # unless! we cant assume that improving the modularity of a community improves
-            # the modularity of the graph
-            # mod = refined_modularity(mod, status, com_status, com, resolution)
             com_partition = __renumber(com_status.node2com)
-            update_partition(partition, com_partition, weight, status, current_graph)
-        #new_mod = __modularity(status, resolution)
-        #new_mod = modularity(partition, current_graph, weight)
-        print(new_mod)
+            update_status(partition, com_partition, weight, status, current_graph)
+        print(len(set(status.node2com.values())))
+        partition = __renumber(status.node2com)
+        new_mod = __modularity(status, resolution)
+        status_list.append(partition)
         mod = new_mod 
-        status_list.append(partition) #ours 
-        current_graph = induced_graph(partition, current_graph, weight)
-        status.init(current_graph, weight) #community aggregation step
-        # end of our code
+        current_graph = induced_graph(partition, current_graph, weight) #community aggregation step
+        status.init(current_graph, weight) 
     return status_list[:]
 
 
@@ -584,21 +571,21 @@ def update_com2node(com2node, node, old_com, new_com):
     return com2node
 
 
-def update_partition(partition, com_partition, weight, status, graph):
-    """ updating the partition of the nodes after the refinment step
+def update_status(partition, com_partition, weight, status, graph):
+    """ updating the the current graph Status after the refinment step
     """
     n = len(set(partition.values())) #number of communities in the graph
-    #print("nods: ", len(com_partition), file=f) 
     com_n = len(set(com_partition.values())) #number of communities in the subgraph
     if (com_n > 1): 
-        # the community was splitted
         for node in com_partition:
             neigh_communities = __neighcom(node, graph, status, weight)
             if com_partition[node] != (com_n - 1): #we want one community to stay with the same name
                 old_com = partition[node]
                 new_com = n + com_partition[node]
-                __remove(node, old_com, neigh_communities.get(old_com, 0.), status)
-                __insert(node, new_com, neigh_communities.get(new_com, 0.), status)
+                __remove(node, old_com, 
+                        neigh_communities.get(old_com, 0.), status)
+                __insert(node, new_com, 
+                        neigh_communities.get(new_com, 0.), status)
                 partition[node] = new_com
     return 
 
@@ -630,7 +617,7 @@ def one_level_refine(graph, status, weight_key, resolution, random_state):
             remove_cost = - neigh_communities.get(com_node,0) + \
                 resolution * (status.degrees.get(com_node, 0.) - status.gdegrees.get(node, 0.)) * degc_totw
             if(len(graph.nodes())>0 and nx.is_connected(graph)):
-                #removing node will keep the community connected
+                #removing node will keep it's old community connected
                 __remove(node, com_node,
                         neigh_communities.get(com_node, 0.), status)
                 best_com = com_node
@@ -645,7 +632,6 @@ def one_level_refine(graph, status, weight_key, resolution, random_state):
                         neigh_communities.get(best_com, 0.), status)
                 if best_com != com_node:
                     #node changed a communit
-                    #com2node = update_com2node(com2node, node, com_node, best_com) #added line
                     modified = True
             new_mod = __modularity(status, resolution)
             if new_mod - cur_mod < __MIN:
@@ -658,40 +644,3 @@ G = nx.read_edgelist(r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benc
 partition = best_partition(G)
 modularity = modularity(partition, G)
 print(modularity)
-
-
-# --------------------------------------------  NOTES  ---------------------------------------------------
-"""
-Question: Given a graph with modularity = mod
-in our algo, we iterate community, community and try to improve each subgraph's modularity 
-the question is: is it right to assume that increasing the modularity of a subgraph will result
-in increasing the modularity of the whole graph
-
-Current problems!
-*PROBLEM 1*
-- it turns out that the refinment step is only affective in the first iteration, in every other iteration
-no change is made
-- the reason: louvain aggregates really quickly (<5 iterations), so in the first iteration, we have lots
-of nodes and from them we get approximitly 600 communities - there are enough nodes in each community to 
-perform the refinment (__one_level_refine)
-- after that we have the community aggregation step, so in the next time we do refinment, there aren't
-enough nodes in each community -> removing most nodes will result in an unconnected graph -> no change 
-is made!
-
-*PROBLEM 2*
-when i checked i noticed that the modularity only DECREASES! in every time we use __one_level_refine!
-thus the modularity after the refinment step is in total much smaller (sometimes it even leads to negative mod!)
-
-need to check if it's due to computatinal or algorithmical problem!
-
-"""
-
-# --------------------------------------------  IDEAS  ---------------------------------------------------
-# in case of failure, we might try the following techniques
-"""
-1.  applying the refinment step only in the second iteration
-    motivation - more nodes in community thus more chance to keep the community a connected one
-    downside - hard to apply since there's the community aggregation step
-
-"""
-
