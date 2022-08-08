@@ -335,18 +335,16 @@ def generate_dendrogram(graph,
         com_partition = __renumber(com_status.node2com)
         update_status(current_graph, status, weight, com_partition)
     new_mod = __modularity(status, resolution)
-    print(new_mod)
     partition = __renumber(status.node2com)
     mod = new_mod 
     status_list.append(partition)
     current_graph = induced_graph(partition, current_graph, weight) #community aggregation step
     status.init(current_graph, weight)
-
+    
     while True:
         __one_level(current_graph, status, weight, resolution, random_state)    # modularity optamisation
-        com2node = generate_com2node(partition)                                 # refinment step
+        com2node = generate_com2node(status.node2com)                           # refinment step
         for com in com2node:
-            print(len(com2node[com]))
             com_nodes = com2node[com]
             com_graph = graph.subgraph(com_nodes).copy()
             com_status = Status()
