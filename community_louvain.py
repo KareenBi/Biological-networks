@@ -320,12 +320,12 @@ def generate_dendrogram(graph,
     status = Status()
     status.init(current_graph, weight, part_init)
     status_list = list()
-    __one_level(current_graph, status, weight, resolution, random_state)
+
     # started to change the code from here!
-    partition = __renumber(status.node2com)
-    com2node = generate_com2node(partition)
+    __one_level(current_graph, status, weight, resolution, random_state)
     
     # refinment step
+    com2node = generate_com2node(status.node2com)
     for com in com2node:
         com_nodes = com2node[com]
         com_graph = graph.subgraph(com_nodes).copy()
@@ -333,36 +333,34 @@ def generate_dendrogram(graph,
         com_status.init(com_graph, weight)
         one_level_refine(com_graph, com_status, weight ,resolution, random_state)
         com_partition = __renumber(com_status.node2com)
-        update_status(partition, com_partition, weight, status, current_graph)
-    partition = __renumber(status.node2com) #can even be done without renumbering
-    print(len(set(status.node2com.values())))
+        update_status(current_graph, status, weight, com_partition)
     new_mod = __modularity(status, resolution)
+    print(new_mod)
+    partition = __renumber(status.node2com)
     mod = new_mod 
     status_list.append(partition)
     current_graph = induced_graph(partition, current_graph, weight) #community aggregation step
-    status.init(current_graph, weight)     
+    status.init(current_graph, weight)
+
     while True:
-        print("!")
-        new_mod = __modularity(status, resolution)
-        __one_level(current_graph, status, weight, resolution, random_state)
-        if new_mod - mod < __MIN:
-            break
-        partition = __renumber(status.node2com)
-        com2node = generate_com2node(partition)
+        __one_level(current_graph, status, weight, resolution, random_state)    # modularity optamisation
+        com2node = generate_com2node(partition)                                 # refinment step
         for com in com2node:
+            print(len(com2node[com]))
             com_nodes = com2node[com]
             com_graph = graph.subgraph(com_nodes).copy()
             com_status = Status()
             com_status.init(com_graph, weight)
             one_level_refine(com_graph, com_status, weight ,resolution, random_state)
             com_partition = __renumber(com_status.node2com)
-            update_status(partition, com_partition, weight, status, current_graph)
-        print(len(set(status.node2com.values())))
-        partition = __renumber(status.node2com)
+            update_status(current_graph, status, weight, com_partition)
         new_mod = __modularity(status, resolution)
+        if new_mod - mod < __MIN:
+            break
+        partition = __renumber(status.node2com)
         status_list.append(partition)
         mod = new_mod 
-        current_graph = induced_graph(partition, current_graph, weight) #community aggregation step
+        current_graph = induced_graph(partition, current_graph, weight)         #community aggregation step
         status.init(current_graph, weight) 
     return status_list[:]
 
@@ -497,8 +495,7 @@ def __one_level(graph, status, weight_key, resolution, random_state):
 
 
 def __neighcom(node, graph, status, weight_key):
-    """
-    Compute the communities in the neighborhood of node in the graph given
+    """ Compute the communities in the neighborhood of node in the graph given
     with the decomposition node2com
     """
     weights = {}
@@ -571,26 +568,26 @@ def update_com2node(com2node, node, old_com, new_com):
     return com2node
 
 
-def update_status(partition, com_partition, weight, status, graph):
+def update_status(graph, status, weight_key, com_partition):
     """ updating the the current graph Status after the refinment step
+    using __remove(), and __insert() functions
     """
-    n = len(set(partition.values())) #number of communities in the graph
-    com_n = len(set(com_partition.values())) #number of communities in the subgraph
+    n = len(set(status.node2com.values()))          #number of communities in the graph
+    max_com = max(set(status.node2com.values())) + 1    #maximal community number
+    com_n = len(set(com_partition.values()))        #number of communities in the subgraph
     if (com_n > 1): 
+        #the community was splitted
         for node in com_partition:
-            neigh_communities = __neighcom(node, graph, status, weight)
-            if com_partition[node] != (com_n - 1): #we want one community to stay with the same name
-                old_com = partition[node]
-                new_com = n + com_partition[node]
-                __remove(node, old_com, 
-                        neigh_communities.get(old_com, 0.), status)
-                __insert(node, new_com, 
-                        neigh_communities.get(new_com, 0.), status)
-                partition[node] = new_com
+            neigh_communities = __neighcom(node, graph, status, weight_key)
+            old_com = status.node2com[node]
+            new_com = max_com + com_partition[node]
+            __remove(node, old_com, 
+                    neigh_communities.get(old_com, 0.), status)
+            __insert(node, new_com, 
+                    neigh_communities.get(new_com, 0.), status)
     return 
 
         
-
 def one_level_refine(graph, status, weight_key, resolution, random_state):
     """Refinement step
     each community is a connected graph
