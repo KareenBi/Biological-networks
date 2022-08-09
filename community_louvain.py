@@ -14,7 +14,10 @@ import numpy as np
 from community_status import Status
 
 import networkx.algorithms.community as nx_comm
-import sys
+import sys                          #delete later
+import matplotlib.cm as cm          #drawing graph
+import matplotlib.pyplot as plt     #draw
+from community import community_louvain
 
 __author__ = """Thomas Aynaud (thomas.aynaud@lip6.fr)"""
 #    Copyright (C) 2009 by
@@ -338,8 +341,6 @@ def generate_dendrogram(graph,
     partition = __renumber(status.node2com)
     mod = new_mod 
     status_list.append(partition)
-    #com2node = generate_com2node(partition) 
-    #jaccard_com2node = com2node
     current_graph = induced_graph(partition, current_graph, weight) #community aggregation step
     status.init(current_graph, weight)
     
@@ -360,8 +361,6 @@ def generate_dendrogram(graph,
         partition = __renumber(status.node2com)
         status_list.append(partition)
         mod = new_mod 
-        #com2node = generate_com2node(partition) 
-        #jaccard_com2node = update_jaccard_com2node(com2node, jaccard_com2node)
         current_graph = induced_graph(partition, current_graph, weight)         #community aggregation step
         status.init(current_graph, weight) 
     return status_list[:]
@@ -519,7 +518,6 @@ def __remove(node, com, weight, status):
     status.node2com[node] = -1
 
 
-
 def __insert(node, com, weight, status):
     """ Insert node into community and modify status"""
     status.node2com[node] = com
@@ -561,7 +559,7 @@ def generate_com2node(node2com):
     return com2node
 
 
-def update_com2node(com2node, node, old_com, new_com):
+def update_com2node(com2node, node, old_com, new_com):      #to delete! didn't use it eventually
     """Updating the com2node dictionaty after 
     moving node from old_com to new_com
     """
@@ -630,13 +628,14 @@ def one_level_refine(graph, status, weight_key, resolution, random_state):
                 __insert(node, best_com,
                         neigh_communities.get(best_com, 0.), status)
                 if best_com != com_node:
-                    #node changed a communit
+                    #node changed it's community
                     modified = True
             new_mod = __modularity(status, resolution)
             if new_mod - cur_mod < __MIN:
                 break
     
-def update_jaccard_com2node(com2node, jaccard_com2node):
+
+def update_jaccard_com2node(com2node, jaccard_com2node):        #TO DELETE!
     updated = dict()
     for com in com2node:
         for node in com2node[com]:
@@ -645,6 +644,7 @@ def update_jaccard_com2node(com2node, jaccard_com2node):
             else:
                 updated[com] = updated[com] + jaccard_com2node[node]
     return updated
+
 
 def generate_known_solution(path):
     """ Generating node2com dictionary based on the GeneOntology
@@ -656,15 +656,16 @@ def generate_known_solution(path):
             node2com[key] = val.strip("\n")
     return node2com
 
+
 def __jaccard(X, Y):
     """ Calculating the jaccard based on the lecture
-    X: known solution, Y: suggested solution
+    X: known solution, Y: our suggested solution
     """
     N_11 = 0    # i and j are assigned to the same cluster in X and Y
     N_00 = 0    # i and j are assigned to the different clusters in both X and Y
     N_10 = 0    # i and j are assigned to the same cluster in X but to different clusters in Y
     N_01 = 0    # i and j are assigned to the different clusters in X but the same in Y
-    nodes = list(X.keys())
+    nodes = list(Y.keys())
     for i in range(len(nodes)):
         cluster_i_X = X[nodes[i]]
         cluster_i_Y = Y[nodes[i]]
@@ -681,23 +682,73 @@ def __jaccard(X, Y):
                 N_01 += 1
     jaccard = N_11/ (N_00 + N_10 + N_01)
     return jaccard
-            
-            
 
+
+def run_code(cluster_path, edges_path, n):
+    G = nx.read_edgelist(edges_path, delimiter = "\t")
+    known_solution = generate_known_solution(cluster_path)
+    jaccard_01, jaccard_02       = 0, 0
+    modularity_01, modularity_02 = 0, 0
+    for i in range(n):
+        # calculations based on the original code
+        partition_01 = community_louvain.best_partition(G)
+        modularity_01 += modularity(partition_01, G)
+        jaccard_01 += __jaccard(known_solution, partition_01)
+
+        #calculations based on our extended code
+        partition_02 = best_partition(G)
+        modularity_02 += modularity(partition_02, G)
+        jaccard_02 += __jaccard(known_solution, partition_02)
     
+    modularity_01 = round(modularity_01/n, 5)
+    jaccard_01 = round(jaccard_01/n, 5)
+    modularity_02 = round(modularity_02/n, 5)
+    jaccard_02 = round(jaccard_02/n, 5)
+    return (modularity_01, jaccard_01, modularity_02, jaccard_02)
 
+
+            
 
 # ---------------------------------------------------------------------------------------------------------------------
-#G = nx.read_edgelist(r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Arabidopsis/edges.txt", delimiter = "\t")
-G = nx.read_edgelist(r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Yeast/edges.txt", delimiter = "\t")
-path = (r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Yeast/clusters.txt")
-known_solution = generate_known_solution(path)
+yeast_edges = (r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Yeast/edges.txt")
+yeast_cluster = (r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Yeast/clusters.txt")
+
+arabidopsis_edges = (r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Arabidopsis/edges.txt")        
+arabidopsis_cluster = (r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Arabidopsis/clusters.txt") 
+
+n = 15
+
+modularity_01, jaccard_01, modularity_02, jaccard_02  = run_code(arabidopsis_cluster, arabidopsis_edges, n)
+
+print("Jaccard_01: ", jaccard_01)
+print("Modularity_01: ", modularity_01)
+print("\n")
+
+print("Jaccard_02: ", jaccard_02)
+print("Modularity_02: ", modularity_02)
+print("\n")
+
+if(modularity_01>modularity_02):
+    print("Original modularity is better :(")
+elif(modularity_01<modularity_02):
+    print("Our modularity is better ! :)")
+else:
+    print("same same..")
+
+if(jaccard_01>jaccard_02):
+    print("Original jaccard is better :(")
+elif(jaccard_01<jaccard_02):
+    print("Our jaccard is better ! :)")
+else:
+    print("same same..")
 
 
-partition = best_partition(G)
-modularity = modularity(partition, G)
-jaccard = __jaccard(known_solution, partition)
-print("Our solution")
-print("Jaccard: ", jaccard)
-print("Modularity: ", modularity)
-#print(modularity)
+"""
+# draw the graph
+pos = nx.spring_layout(G)
+# color the nodes according to their partition
+cmap = cm.get_cmap('viridis', max(partition.values()) + 1)
+nx.draw_networkx_nodes(G, pos, partition.keys(), node_size=40, cmap=cmap, node_color=list(partition.values()))
+nx.draw_networkx_edges(G, pos, alpha=0.5)
+plt.show()
+"""
