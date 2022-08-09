@@ -338,6 +338,8 @@ def generate_dendrogram(graph,
     partition = __renumber(status.node2com)
     mod = new_mod 
     status_list.append(partition)
+    #com2node = generate_com2node(partition) 
+    #jaccard_com2node = com2node
     current_graph = induced_graph(partition, current_graph, weight) #community aggregation step
     status.init(current_graph, weight)
     
@@ -358,6 +360,8 @@ def generate_dendrogram(graph,
         partition = __renumber(status.node2com)
         status_list.append(partition)
         mod = new_mod 
+        #com2node = generate_com2node(partition) 
+        #jaccard_com2node = update_jaccard_com2node(com2node, jaccard_com2node)
         current_graph = induced_graph(partition, current_graph, weight)         #community aggregation step
         status.init(current_graph, weight) 
     return status_list[:]
@@ -631,11 +635,69 @@ def one_level_refine(graph, status, weight_key, resolution, random_state):
             new_mod = __modularity(status, resolution)
             if new_mod - cur_mod < __MIN:
                 break
+    
+def update_jaccard_com2node(com2node, jaccard_com2node):
+    updated = dict()
+    for com in com2node:
+        for node in com2node[com]:
+            if com not in updated:
+                updated[com] = jaccard_com2node[node]
+            else:
+                updated[com] = updated[com] + jaccard_com2node[node]
+    return updated
+
+def generate_known_solution(path):
+    """ Generating node2com dictionary based on the GeneOntology
+    """
+    node2com = {}
+    with open(path) as f:
+        for line in f:
+            (key, val) = line.split("\t")
+            node2com[key] = val.strip("\n")
+    return node2com
+
+def __jaccard(X, Y):
+    """ Calculating the jaccard based on the lecture
+    X: known solution, Y: suggested solution
+    """
+    N_11 = 0    # i and j are assigned to the same cluster in X and Y
+    N_00 = 0    # i and j are assigned to the different clusters in both X and Y
+    N_10 = 0    # i and j are assigned to the same cluster in X but to different clusters in Y
+    N_01 = 0    # i and j are assigned to the different clusters in X but the same in Y
+    nodes = list(X.keys())
+    for i in range(len(nodes)):
+        cluster_i_X = X[nodes[i]]
+        cluster_i_Y = Y[nodes[i]]
+        for j in range(i):
+            cluster_j_X = X[nodes[j]]
+            cluster_j_Y = Y[nodes[j]]
+            if(cluster_i_X == cluster_j_X and cluster_i_Y == cluster_j_Y):
+                N_11 += 1
+            elif (cluster_i_X != cluster_j_X and cluster_i_Y != cluster_j_Y):
+                N_00 += 1
+            elif (cluster_i_X == cluster_j_X and cluster_i_Y != cluster_j_Y):
+                N_10 += 1
+            else:
+                N_01 += 1
+    jaccard = N_11/ (N_00 + N_10 + N_01)
+    return jaccard
+            
+            
+
+    
 
 
 # ---------------------------------------------------------------------------------------------------------------------
 #G = nx.read_edgelist(r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Arabidopsis/edges.txt", delimiter = "\t")
 G = nx.read_edgelist(r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Yeast/edges.txt", delimiter = "\t")
+path = (r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Yeast/clusters.txt")
+known_solution = generate_known_solution(path)
+
+
 partition = best_partition(G)
 modularity = modularity(partition, G)
-print(modularity)
+jaccard = __jaccard(known_solution, partition)
+print("Our solution")
+print("Jaccard: ", jaccard)
+print("Modularity: ", modularity)
+#print(modularity)
