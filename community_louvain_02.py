@@ -332,13 +332,14 @@ def generate_dendrogram(graph,
     # refinment step
     com2node = generate_com2node(status.node2com)
     for com in com2node:
-        #com_nodes = com2node[com]
-        #com_graph = graph.subgraph(com_nodes).copy()
-        #com_status = Status()
-        #com_status.init(com_graph, weight)
-        one_level_refine(current_graph, status, com, weight ,resolution, random_state)
-        #com_partition = __renumber(com_status.node2com)
-        #update_status(current_graph, status, weight, com_partition)
+        com_nodes = com2node[com]
+        #f.write(str(len(com_nodes)))
+        com_graph = current_graph.subgraph(com_nodes).copy()
+        com_status = Status()
+        com_status.init(com_graph, weight)
+        one_level_refine(com_graph, com_status, weight ,resolution, random_state)
+        com_partition = __renumber(com_status.node2com)
+        update_status(current_graph, status, weight, com_partition)
     new_mod = __modularity(status, resolution)
     partition = __renumber(status.node2com)
     mod = new_mod 
@@ -350,13 +351,13 @@ def generate_dendrogram(graph,
         __one_level(current_graph, status, weight, resolution, random_state)    # modularity optamisation
         com2node = generate_com2node(status.node2com)                           # refinment step
         for com in com2node:
-            #com_nodes = com2node[com]
-            #com_graph = graph.subgraph(com_nodes).copy()
-            #com_status = Status()
-            #com_status.init(com_graph, weight)
-            one_level_refine(current_graph, status, com, weight ,resolution, random_state)
-            #com_partition = __renumber(com_status.node2com)
-            #update_status(current_graph, status, weight, com_partition)
+            com_nodes = com2node[com]
+            com_graph = current_graph.subgraph(com_nodes).copy()
+            com_status = Status()
+            com_status.init(com_graph, weight)
+            one_level_refine(com_graph, com_status, weight ,resolution, random_state)
+            com_partition = __renumber(com_status.node2com)
+            update_status(current_graph, status, weight, com_partition)
         new_mod = __modularity(status, resolution)
         if new_mod - mod < __MIN:
             break
@@ -365,6 +366,7 @@ def generate_dendrogram(graph,
         mod = new_mod 
         current_graph = induced_graph(partition, current_graph, weight)         #community aggregation step
         status.init(current_graph, weight) 
+    
     return status_list[:]
 
 
@@ -512,9 +514,7 @@ def __neighcom(node, graph, status, weight_key):
 
 
 def __remove(node, com, weight, status):
-    """ Remove node from community com and modify status
-    weight = sum of weighted edges from node to other nodes inside com  
-    """
+    """ Remove node from community com and modify status"""
     status.degrees[com] = (status.degrees.get(com, 0.)
                            - status.gdegrees.get(node, 0.))
     status.internals[com] = float(status.internals.get(com, 0.) -
@@ -576,9 +576,9 @@ def update_status(graph, status, weight_key, com_partition):
     """ updating the the current graph Status after the refinment step
     using __remove(), and __insert() functions
     """
-    n = len(set(status.node2com.values()))          #number of communities in the graph
-    max_com = max(set(status.node2com.values())) + 1    #maximal community number
-    com_n = len(set(com_partition.values()))        #number of communities in the subgraph
+    #n = len(set(status.node2com.values()))              # number of communities in the graph
+    max_com = max(set(status.node2com.values())) + 1    # maximal community number
+    com_n = len(set(com_partition.values()))            # number of communities in the subgraph
     if (com_n > 1): 
         #the community was splitted
         for node in com_partition:
@@ -592,7 +592,7 @@ def update_status(graph, status, weight_key, com_partition):
     return 
 
         
-def one_level_refine(graph, status, com, weight_key, resolution, random_state):
+def one_level_refine(graph, status, weight_key, resolution, random_state):
     """Refinement step
     each community is a connected graph
     graph: a community of the graph
@@ -603,27 +603,15 @@ def one_level_refine(graph, status, com, weight_key, resolution, random_state):
     """
     modified = True
     nb_pass_done = 0
-    com2node = generate_com2node(status.node2com)       #need to check!
-    com_nodes = com2node[com]                           #need to be checked!
-    smaller_com = max(set(status.node2com.values()))
-    new_com = smaller_com 
-    for node in com_nodes:
-        new_com += 1
-        neigh_communities = __neighcom(node, graph, status, weight_key)
-        __remove(node, com,
-                    neigh_communities.get(com, 0.), status)
-        __insert(node, new_com,
-                    neigh_communities.get(new_com, 0.), status)
-    new_mod = __modularity(status, resolution)
-    # the new community numbers are: smaller_com < x <= new_com
-
+    cur_mod = __modularity(status, resolution)
+    new_mod = cur_mod
     while modified and nb_pass_done != __PASS_MAX:
         cur_mod = new_mod
         modified = False
         nb_pass_done += 1
         #!!
         #com2node = generate_com2node(status.node2com)
-        for node in __randomize(com_nodes, random_state):
+        for node in __randomize(graph.nodes(), random_state):
             com_node = status.node2com[node]
             degc_totw = status.gdegrees.get(node, 0.) / (status.total_weight * 2.)  # NOQA
             neigh_communities = __neighcom(node, graph, status, weight_key)
@@ -640,12 +628,11 @@ def one_level_refine(graph, status, com, weight_key, resolution, random_state):
                 best_com = com_node
                 best_increase = 0
                 for com, dnc in __randomize(neigh_communities.items(), random_state):
-                    if(smaller_com < com and com <= new_com):
-                        incr = remove_cost + dnc - \
-                            resolution * status.degrees.get(com, 0.) * degc_totw
-                        if incr > best_increase:
-                            best_increase = incr
-                            best_com = com
+                    incr = remove_cost + dnc - \
+                        resolution * status.degrees.get(com, 0.) * degc_totw
+                    if incr > best_increase:
+                        best_increase = incr
+                        best_com = com
                 __insert(node, best_com,
                         neigh_communities.get(best_com, 0.), status)
                 if best_com != com_node:
@@ -704,11 +691,13 @@ def run_code(cluster_path, edges_path, n):
     for i in range(n):
         # calculations based on the original code
         partition_01 = community_louvain.best_partition(G)
+        print(len(set(partition_01.values())))
         modularity_01 += modularity(partition_01, G)
         jaccard_01 += __jaccard(known_solution, partition_01)
 
         #calculations based on our extended code
         partition_02 = best_partition(G)
+        print(len(set(partition_02.values())))
         modularity_02 += modularity(partition_02, G)
         jaccard_02 += __jaccard(known_solution, partition_02)
     
@@ -741,7 +730,7 @@ result = run_leiden(yeast_edges)
 print("Leiden result: ", result)
 """
 
-modularity_01, jaccard_01, modularity_02, jaccard_02  = run_code(yeast_cluster, yeast_edges, n)
+modularity_01, jaccard_01, modularity_02, jaccard_02  = run_code(arabidopsis_cluster, arabidopsis_edges, n)
 
 print("Jaccard_01: ", jaccard_01)
 print("Modularity_01: ", modularity_01)
