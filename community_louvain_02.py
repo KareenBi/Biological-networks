@@ -1,5 +1,7 @@
+"""
+This module implements community detection using modularity optamization
+"""
 from __future__ import print_function
-
 import array
 
 import numbers
@@ -7,31 +9,28 @@ import warnings
 
 import networkx as nx
 import numpy as np
-from regex import W
 
 from community_status import Status
 
 import networkx.algorithms.community as nx_comm
 import sys                          #delete later
-import matplotlib.cm as cm          #drawing graph
-import matplotlib.pyplot as plt     #draw
 from community import community_louvain
-import leidenalg as la              #leiden algorithm
-import igraph as ig                 #igraph for leiden algorithm
 
-__author__ = """Thomas Aynaud (thomas.aynaud@lip6.fr)"""
-#    Copyright (C) 2009 by
+#    Used code the following code:
 #    Thomas Aynaud <thomas.aynaud@lip6.fr>
 #    All rights reserved.
+#    Copyright (C) 2009 by
 #    BSD license.
 
+#   Added code by:
+#   Firas Meari
+#   Kareen Bishara
 
 __PASS_MAX = -1
 __MIN = 0.0000001
 
 orig_stdout = sys.stdout
 f =  open('out.txt', 'w') #!
-
 
 def check_random_state(seed):
     """Turn seed into a np.random.RandomState instance.
@@ -160,7 +159,8 @@ def best_partition(graph,
                    weight='weight',
                    resolution=1.,
                    randomize=None,
-                   random_state=None):
+                   random_state=None,
+                   always_refine = True):
     """Compute the partition of the graph nodes which maximises the modularity
     (or try..) using the Louvain heuristices
     This is the partition of highest modularity, i.e. the highest partition
@@ -236,7 +236,8 @@ def best_partition(graph,
                                 weight,
                                 resolution,
                                 randomize,
-                                random_state)
+                                random_state,
+                                always_refine)
     return partition_at_level(dendo, len(dendo) - 1)
 
 
@@ -245,7 +246,8 @@ def generate_dendrogram(graph,
                         weight='weight',
                         resolution=1.,
                         randomize=None,
-                        random_state=None):
+                        random_state=None,
+                        always_refine=True):
     """Find communities in the graph and return the associated dendrogram
     A dendrogram is a tree and each level is a partition of the graph nodes.
     Level 0 is the first partition, which contains the smallest communities,
@@ -327,65 +329,45 @@ def generate_dendrogram(graph,
     status_list = list()
 
     # started to change the code from here!
-    __one_level(current_graph, status, weight, resolution, random_state)        # modularity optamisation
+    modularity_optimization(current_graph, status, weight, resolution, random_state)
     
-    # refinment step
+    # refinement step
     com2node = generate_com2node(status.node2com)
     for com in com2node:
-        """
-            #checking disconnectivity!
-        com_nodes = com2node[com]
-        com_graph = graph.subgraph(com_nodes).copy()
-        if(not nx.is_connected(com_graph)):
-            print("pwaw")
-        """
-        #com_status = Status()
-        #com_status.init(com_graph, weight)
-        one_level_refine(current_graph, status, com, weight ,resolution, random_state)
-        #com_partition = __renumber(com_status.node2com)
-        #update_status(current_graph, status, weight, com_partition)
+        refinement_step(current_graph, status, com, weight ,resolution, random_state)
     new_mod = __modularity(status, resolution)
     partition = __renumber(status.node2com)
     mod = new_mod 
     status_list.append(partition)
-    current_graph = induced_graph(partition, current_graph, weight)             #community aggregation step
+    current_graph = community_aggregation(partition, current_graph, weight)
     status.init(current_graph, weight)
     
     while True:
-        __one_level(current_graph, status, weight, resolution, random_state)    # modularity optamisation
+        modularity_optimization(current_graph, status, weight, resolution, random_state)    # modularity optamisation
         com2node = generate_com2node(status.node2com)                           # refinment step
         for com in com2node:
-            """
-            #checking disconnectivity!
-            com_nodes = com2node[com]
-            com_graph = graph.subgraph(com_nodes).copy()
-            if(not nx.is_connected(com_graph)):
-                print("pwaw")
-            """
-            #com_status = Status()
-            #com_status.init(com_graph, weight)
-            one_level_refine(current_graph, status, com, weight ,resolution, random_state)
-            #com_partition = __renumber(com_status.node2com)
-            #update_status(current_graph, status, weight, com_partition)
+            if(always_refine):
+                #performing the refinment step for every community
+                refinement_step(current_graph, status, com, weight ,resolution, random_state)
+            else:
+                #performing the refinement steps only for disconnected communities
+                com_nodes = com2node[com]
+                com_graph = current_graph.subgraph(com_nodes).copy()
+                if(not nx.is_connected(com_graph)):
+                    refinement_step(current_graph, status, com, weight ,resolution, random_state)
+
         new_mod = __modularity(status, resolution)
         if new_mod - mod < __MIN:
             break
         partition = __renumber(status.node2com)
         status_list.append(partition)
         mod = new_mod 
-        current_graph = induced_graph(partition, current_graph, weight)         #community aggregation step
+        current_graph = community_aggregation(partition, current_graph, weight)         
         status.init(current_graph, weight) 
-    """
-    __one_level(current_graph, status, weight, resolution, random_state)
-    partition = __renumber(status.node2com)
-    status_list.append(partition)
-    """
-    #!!
-        
     return status_list[:]
 
 
-def induced_graph(partition, graph, weight="weight"):
+def community_aggregation(partition, graph, weight="weight"):
     """Produce the graph where nodes are the communities
     there is a link of weight w between communities if the sum of the weights
     of the links between their elements is w
@@ -409,7 +391,7 @@ def induced_graph(partition, graph, weight="weight"):
     >>> part = dict([])
     >>> for node in g.nodes() :
     >>>     part[node] = node % 2
-    >>> ind = induced_graph(part, g)
+    >>> ind = community_aggregation(part, g)
     >>> goal = nx.Graph()
     >>> goal.add_weighted_edges_from([(0,1,n*n),(0,0,n*(n-1)/2), (1, 1, n*(n-1)/2)])  # NOQA
     >>> nx.is_isomorphic(ind, goal)
@@ -427,56 +409,7 @@ def induced_graph(partition, graph, weight="weight"):
     return ret
 
 
-def __renumber(dictionary):
-    """Renumber the values of the dictionary from 0 to n
-    """
-    values = set(dictionary.values())
-    target = set(range(len(values)))
-
-    if values == target:
-        # no renumbering necessary
-        ret = dictionary.copy()
-    else:
-        # add the values that won't be renumbered
-        renumbering = dict(zip(target.intersection(values),
-                               target.intersection(values)))
-        # add the values that will be renumbered
-        renumbering.update(dict(zip(values.difference(target),
-                                    target.difference(values))))
-        ret = {k: renumbering[v] for k, v in dictionary.items()}
-
-    return ret
-
-
-def load_binary(data):
-    """Load binary graph as used by the cpp implementation of this algorithm
-    """
-    data = open(data, "rb")
-
-    reader = array.array("I")
-    reader.fromfile(data, 1)
-    num_nodes = reader.pop()
-    reader = array.array("I")
-    reader.fromfile(data, num_nodes)
-    cum_deg = reader.tolist()
-    num_links = reader.pop()
-    reader = array.array("I")
-    reader.fromfile(data, num_links)
-    links = reader.tolist()
-    graph = nx.Graph()
-    graph.add_nodes_from(range(num_nodes))
-    prec_deg = 0
-
-    for index in range(num_nodes):
-        last_deg = cum_deg[index]
-        neighbors = links[prec_deg:last_deg]
-        graph.add_edges_from([(index, int(neigh)) for neigh in neighbors])
-        prec_deg = last_deg
-
-    return graph
-
-
-def __one_level(graph, status, weight_key, resolution, random_state):
+def modularity_optimization(graph, status, weight_key, resolution, random_state):
     """Compute one level of communities
     """
     modified = True
@@ -514,6 +447,27 @@ def __one_level(graph, status, weight_key, resolution, random_state):
             break
 
 
+def __renumber(dictionary):
+    """Renumber the values of the dictionary from 0 to n
+    """
+    values = set(dictionary.values())
+    target = set(range(len(values)))
+
+    if values == target:
+        # no renumbering necessary
+        ret = dictionary.copy()
+    else:
+        # add the values that won't be renumbered
+        renumbering = dict(zip(target.intersection(values),
+                               target.intersection(values)))
+        # add the values that will be renumbered
+        renumbering.update(dict(zip(values.difference(target),
+                                    target.difference(values))))
+        ret = {k: renumbering[v] for k, v in dictionary.items()}
+
+    return ret
+
+
 def __neighcom(node, graph, status, weight_key):
     """ Compute the communities in the neighborhood of node in the graph given
     with the decomposition node2com
@@ -529,9 +483,7 @@ def __neighcom(node, graph, status, weight_key):
 
 
 def __remove(node, com, weight, status):
-    """ Remove node from community com and modify status
-    weight = sum of weighted edges from node to other nodes inside com  
-    """
+    """ Remove node from community com and modify status"""
     status.degrees[com] = (status.degrees.get(com, 0.)
                            - status.gdegrees.get(node, 0.))
     status.internals[com] = float(status.internals.get(com, 0.) -
@@ -569,9 +521,11 @@ def __randomize(items, random_state):
     return randomized_items
 
 #---------------------------------------------------- ADDED FUNCTIONS ----------------------------------------------------
+
 def generate_com2node(node2com):
     """Generating the dictionary com2node
-    key: community the community's nodes
+    key: community number
+    value: the community's nodes
     """
     coms = set(node2com.values())
     com2node = {i:list() for i in coms}
@@ -580,20 +534,10 @@ def generate_com2node(node2com):
     return com2node
 
 
-def update_com2node(com2node, node, old_com, new_com):      #to delete! didn't use it eventually
-    """Updating the com2node dictionaty after 
-    moving node from old_com to new_com
-    """
-    com2node[old_com].remove(node)
-    com2node[new_com].append(node)
-    return com2node
-
-
 def update_status(graph, status, weight_key, com_partition):
     """ updating the the current graph Status after the refinment step
     using __remove(), and __insert() functions
     """
-    n = len(set(status.node2com.values()))          #number of communities in the graph
     max_com = max(set(status.node2com.values())) + 1    #maximal community number
     com_n = len(set(com_partition.values()))        #number of communities in the subgraph
     if (com_n > 1): 
@@ -609,74 +553,71 @@ def update_status(graph, status, weight_key, com_partition):
     return 
 
         
-def one_level_refine(graph, status, com, weight_key, resolution, random_state):
+def refinement_step(graph, status, com, weight_key, resolution, random_state):
     """Refinement step
-    each community is a connected graph
-    graph: a community of the graph
+    Shattering down the builded com in graph, and repeating the modularity optamisation
+    step on it's nodes, while keeping each community a connected community
     ...
-    In iteration 1, len(community.nodes)==1 thus a connected graph
     in each iteration, we only move a node if the modularity improves 
     and all communities are still connected
     """
+    print(len(set(status.node2com.values())))
     modified = True
     nb_pass_done = 0
-    com2node = generate_com2node(status.node2com)       #need to check!
-    com_nodes = com2node[com]                           #need to be checked!
-    smaller_com = max(set(status.node2com.values()))
-    new_com = smaller_com 
-    for node in com_nodes:
-        new_com += 1
+    com2node = generate_com2node(status.node2com)
+    com_nodes = com2node[com] 
+    first_new_com = max(set(status.node2com.values())) 
+    new_com = first_new_com + 1
+    for node in com_nodes:  #shattering down the community
         neigh_communities = __neighcom(node, graph, status, weight_key)
         __remove(node, com,
                     neigh_communities.get(com, 0.), status)
         __insert(node, new_com,
                     neigh_communities.get(new_com, 0.), status)
-    new_mod = __modularity(status, resolution)
-    # the new community numbers are: smaller_com < x <= new_com
+        new_com += 1
+    # for every node in com: first_new_com <= node2com[node] < new_com  
 
+    new_mod = __modularity(status, resolution)
+    com2node = generate_com2node(status.node2com)  
     while modified and nb_pass_done != __PASS_MAX:
         cur_mod = new_mod
         modified = False
         nb_pass_done += 1
-        #!!
-        #com2node = generate_com2node(status.node2com)
         for node in __randomize(com_nodes, random_state):
             com_node = status.node2com[node]
             degc_totw = status.gdegrees.get(node, 0.) / (status.total_weight * 2.)  # NOQA
             neigh_communities = __neighcom(node, graph, status, weight_key)
             remove_cost = - neigh_communities.get(com_node,0) + \
                 resolution * (status.degrees.get(com_node, 0.) - status.gdegrees.get(node, 0.)) * degc_totw
-            com2node = generate_com2node(status.node2com)       #better to use update_com2node instead
-                                                                #of generaring in every iteration
-            com_nodes = set(com2node[com_node])-{node}
-            subgraph = graph.subgraph(com_nodes).copy()
-            if(len(subgraph.nodes())==0 or nx.is_connected(subgraph)):
+            subgraph = graph.subgraph(set(com2node[com_node])-{node}).copy()
+            if(len(subgraph.nodes()) == 0 or nx.is_connected(subgraph)):
                 #removing node will keep it's old community connected
                 __remove(node, com_node,
                         neigh_communities.get(com_node, 0.), status)
                 best_com = com_node
                 best_increase = 0
-                for com, dnc in __randomize(neigh_communities.items(), random_state):
-                    if(smaller_com < com and com <= new_com):
+                for ncom, dnc in __randomize(neigh_communities.items(), random_state):
+                    if(first_new_com <= ncom and com < new_com):
                         incr = remove_cost + dnc - \
-                            resolution * status.degrees.get(com, 0.) * degc_totw
+                            resolution * status.degrees.get(ncom, 0.) * degc_totw
                         if incr > best_increase:
                             best_increase = incr
-                            best_com = com
+                            best_com = ncom
                 __insert(node, best_com,
                         neigh_communities.get(best_com, 0.), status)
+                com2node = generate_com2node(status.node2com)
                 if best_com != com_node:
                     #node changed it's community
                     modified = True
-                    #!!
-                    #update_com2node(com2node, node, com_node, best_com)
             new_mod = __modularity(status, resolution)
             if new_mod - cur_mod < __MIN:
+                print(len(set(status.node2com.values())))
+                print("---------")
                 break
-
+    
 
 def generate_known_solution(path):
-    """ Generating node2com dictionary based on the GeneOntology
+    """ Generating node2com dictionary based on the given GeneOntology classification
     """
     node2com = {}
     with open(path) as f:
@@ -687,7 +628,7 @@ def generate_known_solution(path):
 
 
 def __jaccard(X, Y):
-    """ Calculating the jaccard based on the lecture
+    """ Calculating the Jaccard based on the lecture
     X: known solution, Y: our suggested solution
     """
     N_11 = 0    # i and j are assigned to the same cluster in X and Y
@@ -718,33 +659,73 @@ def run_code(cluster_path, edges_path, n):
     known_solution = generate_known_solution(cluster_path)
     jaccard_01, jaccard_02       = 0, 0
     modularity_01, modularity_02 = 0, 0
+    com_num_01, com_num_02       = 0, 0
     for i in range(n):
-        # calculations based on the original code
+        # calculations based on the original code (louvain algorithm)
         partition_01 = community_louvain.best_partition(G)
-        print(len(set(partition_01.values())))
+        com_num_01 += len(set(partition_01.values()))
         modularity_01 += modularity(partition_01, G)
         jaccard_01 += __jaccard(known_solution, partition_01)
 
-        #calculations based on our extended code
+        #calculations based on our code (extended version of louvain)
         partition_02 = best_partition(G)
-        print(len(set(partition_02.values())))
+        com_num_02 = len(set(partition_02.values()))
         modularity_02 += modularity(partition_02, G)
         jaccard_02 += __jaccard(known_solution, partition_02)
     
     modularity_01 = round(modularity_01/n, 5)
     jaccard_01 = round(jaccard_01/n, 5)
+    com_num_01 = round(com_num_01/n, 5)
     modularity_02 = round(modularity_02/n, 5)
     jaccard_02 = round(jaccard_02/n, 5)
+    com_num_02 = round(com_num_02/n, 5)
     return (modularity_01, jaccard_01, modularity_02, jaccard_02)
 
 
-def run_leiden(edges_path, n=1):
-    G = ig.Graph()
-    G = ig.Graph.Read_Ncol(edges_path, directed = False)
-    partition = la.find_partition(G, la.ModularityVertexPartition).modularity
-    return partition
+def percentage_diff(modularity_01, jaccard_01, modularity_02, jaccard_02):
+    #printing the increasment/ decreasment percentage of the modularity 
+    if modularity_01<modularity_02:
+        diff_mod = abs(modularity_02 - modularity_01)
+        print("The modularity increased by", round(diff_mod*100, 3), "%")
+    if modularity_01<modularity_02:
+        diff_mod = abs(modularity_01 - modularity_02)
+        print("The modularity decreased by", round(diff_mod*100, 3), "%")
+    else:
+        print("The modualarity did not change")
+    #printing the increasment/ decreasment percentage of Jaccard  measurment
+    if jaccard_01<jaccard_02:
+        diff_jacc = abs(jaccard_01 - jaccard_02)
+        print("The Jaccard incresed by", round(diff_jacc*100, 3), "%")
+    if jaccard_01>jaccard_02:
+        diff_jacc = abs(jaccard_01 - jaccard_02)
+        print("The Jaccard decreased by", round(diff_jacc*100, 3), "%")
+    else:
+        print("The Jaccard did not change")
 
 
+def run_code1(edges_path, n):
+    G = nx.read_edgelist(edges_path, delimiter = "\t")
+    # known_solution = generate_known_solution(cluster_path)
+    # jaccard_01, jaccard_02       = 0, 0
+    modularity_01, modularity_02 = 0, 0
+    for i in range(n):
+        # calculations based on the original code
+        partition_01 = community_louvain.best_partition(G)
+        print(len(set(partition_01.values())))
+        modularity_01 += modularity(partition_01, G)
+        # jaccard_01 += __jaccard(known_solution, partition_01)
+
+        #calculations based on our extended code
+        partition_02 = best_partition(G)
+        print(len(set(partition_02.values())))
+        modularity_02 += modularity(partition_02, G)
+        # jaccard_02 += __jaccard(known_solution, partition_02)
+    
+    modularity_01 = round(modularity_01/n, 5)
+    # jaccard_01 = round(jaccard_01/n, 5)
+    modularity_02 = round(modularity_02/n, 5)
+    # jaccard_02 = round(jaccard_02/n, 5)
+    return (modularity_01, modularity_02)
             
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -754,20 +735,24 @@ yeast_cluster = (r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmar
 arabidopsis_edges = (r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Arabidopsis/edges.txt")        
 arabidopsis_cluster = (r"/Users/kareen/Desktop/Semester_8/Biological_Networks/Benchmarks/Arabidopsis/clusters.txt") 
 
+random_edges = (r"G:\My Drive\Biological Networks\Benchmarks\Benchmarks\Graphs\1000_0.6_6\network.dat")
+random_cluster = (r"G:\My Drive\Biological Networks\Benchmarks\Benchmarks\Graphs\1000_0.6_6\community.dat")
+
+CondMat = (r"G:\My Drive\Biological Networks\Benchmarks\Benchmarks\ca-CondMat\ca-CondMat.txt")
+dblp = (r"G:\My Drive\Biological Networks\Benchmarks\Benchmarks\DBLP\dblp_edges.txt")
+
+disconnected_edges = (r"G:\My Drive\Biological Networks\Benchmarks\Benchmarks\disconnected.txt")
+
 n = 1
-"""
-result = run_leiden(yeast_edges)
-print("Leiden result: ", result)
-"""
 
-modularity_01, jaccard_01, modularity_02, jaccard_02  = run_code(arabidopsis_cluster, arabidopsis_edges, n)
+modularity_01, jaccard_01, modularity_02, jaccard_02  = run_code(yeast_cluster, yeast_edges, n)
 
-print("Jaccard_01: ", jaccard_01)
 print("Modularity_01: ", modularity_01)
+print("Jaccard_01: ", jaccard_01)
 print("\n")
 
-print("Jaccard_02: ", jaccard_02)
 print("Modularity_02: ", modularity_02)
+print("Jaccard_02: ", jaccard_02)
 print("\n")
 
 if(modularity_01>modularity_02):
@@ -784,13 +769,3 @@ elif(jaccard_01<jaccard_02):
 else:
     print("same same..")
 
-
-"""
-# draw the graph
-pos = nx.spring_layout(G)
-# color the nodes according to their partition
-cmap = cm.get_cmap('viridis', max(partition.values()) + 1)
-nx.draw_networkx_nodes(G, pos, partition.keys(), node_size=40, cmap=cmap, node_color=list(partition.values()))
-nx.draw_networkx_edges(G, pos, alpha=0.5)
-plt.show()
-"""
