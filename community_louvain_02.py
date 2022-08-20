@@ -597,7 +597,7 @@ def refinement_step(graph, status, com, weight_key, resolution, random_state):
                 best_com = com_node
                 best_increase = 0
                 for ncom, dnc in __randomize(neigh_communities.items(), random_state):
-                    if(first_new_com <= ncom and com < new_com):
+                    if(first_new_com <= ncom and ncom < new_com):
                         incr = remove_cost + dnc - \
                             resolution * status.degrees.get(ncom, 0.) * degc_totw
                         if incr > best_increase:
