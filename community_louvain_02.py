@@ -13,7 +13,6 @@ import numpy as np
 from community_status import Status
 
 import networkx.algorithms.community as nx_comm
-import sys                          #delete later
 from community import community_louvain
 
 #    Used code the following code:
@@ -29,8 +28,6 @@ from community import community_louvain
 __PASS_MAX = -1
 __MIN = 0.0000001
 
-orig_stdout = sys.stdout
-f =  open('out.txt', 'w') #!
 
 def check_random_state(seed):
     """Turn seed into a np.random.RandomState instance.
