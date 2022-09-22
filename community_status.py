@@ -10,14 +10,14 @@ class Status(object):
     degrees = {}        
     gdegrees = {}       
 
-
     def __init__(self):
-        self.total_weight = 0           # sum of all graph weighted edges(M)
-        self.node2com = dict([])        # node          -> community_num
-        self.degrees = dict([])         # community_num -> number of edges exiting the community
-        self.gdegrees = dict([])        # node          -> number of edges exiting the node 
-        self.internals = dict([])       # community_num -> sum of edges inside this com 
-        self.loops = dict([])           # node          -> weight fo the loops it produces
+        self.node2com = dict([])        # node -> community_num
+        # self.com2node = dict([])      # community_num -> list of nodes
+        self.total_weight = 0           # sum of graph edges
+        self.degrees = dict([])         # community_num ->
+        self.gdegrees = dict([])        # node -> edges exiting the node
+        self.internals = dict([])       # community_num -> 
+        self.loops = dict([])           # node -> weight fo the loopss it produces
 
 
     def __str__(self):
@@ -30,6 +30,7 @@ class Status(object):
         """Perform a deep copy of status"""
         new_status = Status()
         new_status.node2com = self.node2com.copy()
+        # new_status.com2node = self.com2node.copy()
         new_status.internals = self.internals.copy()
         new_status.degrees = self.degrees.copy()
         new_status.gdegrees = self.gdegrees.copy()
@@ -40,6 +41,7 @@ class Status(object):
         """Initialize the status of a graph with every node in one community"""
         count = 0
         self.node2com = dict([])
+        # self.com2node = dict([])
         self.total_weight = 0
         self.degrees = dict([])
         self.gdegrees = dict([])
@@ -48,6 +50,7 @@ class Status(object):
         if part is None:
             for node in graph.nodes():
                 self.node2com[node] = count
+                # self.com2node[count] = [node]
                 deg = float(graph.degree(node, weight=weight))
                 if deg < 0:
                     error = "Bad node degree ({})".format(deg)
